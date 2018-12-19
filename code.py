@@ -193,6 +193,50 @@ def to_set(features):
     return set(i for i, feature in enumerate(features) if feature == 1)
 
 
+def get_stats(positives,
+              negatives,
+              x,
+              pure_positive_intersections,
+              positive_supports):
+    lens = []
+    supports = []
+    pure_positive_supports = []
+    positive_intersections = [positive & x for positive in positives]
+    negative_intersections = [negative & x for negative in negatives]
+
+    for intersection in positive_intersections:
+        lens.append(len(intersection))
+
+    for intersection in positive_intersections + negative_intersections:
+        intersection_tuple = tuple(sorted(intersection))
+
+        if intersection_tuple in positive_supports:
+            supports.append(positive_supports[intersection_tuple])
+        else:
+            support = 0
+            for positive in positives:
+                if intersection <= positive:
+                    support += 1
+            supports.append(support)
+            positive_supports[intersection_tuple] = support
+
+        if intersection in pure_positive_intersections:
+            pure_positive_supports.append(supports[-1])
+        else:
+            for negative in negatives:
+                if intersection <= negative:
+                    break
+            else:
+                pure_positive_supports.append(supports[-1])
+                pure_positive_intersections.add(intersection_tuple)
+    return [
+        np.mean(lens),
+        np.mean(supports) / len(positives),
+        float(len(pure_positive_supports)) / len(positives),
+        np.mean(pure_positive_supports) / len(positives) if len(pure_positive_supports) != 0 else 0
+    ]
+
+
 def lattices_stats(train_x, train_y, test_x):
     positives = [
         to_set(x)
@@ -205,48 +249,33 @@ def lattices_stats(train_x, train_y, test_x):
         if y == 0
     ]
     test_x = [to_set(x) for x in test_x]
-    
-    def get_stats(positive_intersections, positives, negative_intersection, negatives, x):
-        pure_positive_num = 0
-        lens = []
-        for intersection in positive_intersections:
-            lens.append(len(intersection))
-            for negative in negatives:
-                if intersection <= negative:
-                    break
-            else:
-                pure_positive_num += 1
-        supports = []
-        for intersection in positive_intersections + negative_intersection:
-            support = 0
-            for positive in positives:
-                if intersection <= positive:
-                    support += 1
-            supports.append(support)
-        return [pure_positive_num, np.mean(supports) / len(positives), np.mean(lens)]
-    
+
     pos_stats = []
     neg_stats = []
+
+    pure_positive_intersections = set()
+    pure_negative_intersections = set()
+    positive_supports = {}
+    negative_supports = {}
+
     for i, x in enumerate(test_x):
         if i % 20 == 0:
             clear_output()
             print(i)
 
-        positive_intersections = [positive & x for positive in positives]
-        negative_intersections = [negative & x for negative in negatives]
         pos_stats.append(get_stats(
-            positive_intersections,
             positives,
-            negative_intersections,
             negatives,
-            x
+            x,
+            pure_positive_intersections,
+            positive_supports
         ))
         neg_stats.append(get_stats(
-            negative_intersections,
             negatives,
-            positive_intersections,
             positives,
-            x
+            x,
+            pure_negative_intersections,
+            negative_supports
         ))
-    
+
     return np.array(pos_stats), np.array(neg_stats)
